@@ -4,11 +4,12 @@ import { motion } from "motion/react";
 interface SidebarProps {
   activeSection: string;
   setActiveSection: (section: string) => void;
+  liveCount?: number;
 }
 
-export default function Sidebar({ activeSection, setActiveSection }: SidebarProps) {
+export default function Sidebar({ activeSection, setActiveSection, liveCount }: SidebarProps) {
   const menuItems = [
-    { id: "live", label: "Live Now", icon: Radio, count: "4" },
+    { id: "live", label: "Live Now", icon: Radio, count: liveCount ? String(liveCount) : undefined },
     { id: "schedule", label: "Schedule", icon: Calendar },
     { id: "channels", label: "Spotlight", icon: Users },
     { id: "search", label: "Search", icon: Search },

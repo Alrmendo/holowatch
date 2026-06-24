@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Radio, Calendar, Search, Users, Heart, Sparkles, Menu, X, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -8,9 +8,21 @@ import UpcomingTimeline from "./components/UpcomingTimeline";
 import ChannelSpotlight from "./components/ChannelSpotlight";
 import VideoSearchSection from "./components/VideoSearchSection";
 import StreamTheaterModal from "./components/StreamTheaterModal";
+import { LoadingCard, ErrorCard } from "./components/SectionStatus";
 
-import { channels, liveStreams, scheduleItems, videoSearchList } from "./data";
 import { Channel, LiveStream, ScheduleItem, VideoSearchResult } from "./types";
+import {
+  getLiveStreams,
+  getUpcomingStreams,
+  getChannels,
+  searchVideos,
+} from "./services/holodex";
+import {
+  mapChannel,
+  mapLiveStream,
+  mapScheduleItem,
+  mapVideoSearchResult,
+} from "./utils/holodexMappers";
 
 interface ToastNotification {
   id: string;
@@ -18,12 +30,31 @@ interface ToastNotification {
   type: "info" | "success" | "reminder";
 }
 
+const LIVE_REFRESH_INTERVAL_MS = 60_000;
+
 export default function App() {
   // Navigation State (active section)
   const [activeSection, setActiveSection] = useState<string>("live");
-  
+
+  // Live Holodex Data States
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
+
+  const [liveStreams, setLiveStreams] = useState<LiveStream[]>([]);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+
+  const [videoSearchList, setVideoSearchList] = useState<VideoSearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(true);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   // Spotlight and Theater States
-  const [selectedChannel, setSelectedChannel] = useState<Channel>(channels[1]); // Suisei as default
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [activeTheaterStream, setActiveTheaterStream] = useState<LiveStream | null>(null);
 
   // Mobile Drawer State
@@ -32,12 +63,12 @@ export default function App() {
   // Favorites, Subscriptions and Reminders States (Persisted in localStorage)
   const [favorites, setFavorites] = useState<string[]>(() => {
     const saved = localStorage.getItem("holowatch_favorites");
-    return saved ? JSON.parse(saved) : ["suisei", "gura"];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [subscribedChannels, setSubscribedChannels] = useState<string[]>(() => {
     const saved = localStorage.getItem("holowatch_subscriptions");
-    return saved ? JSON.parse(saved) : ["suisei"];
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [reminders, setReminders] = useState<string[]>(() => {
@@ -47,6 +78,81 @@ export default function App() {
 
   // Toast System State
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+
+  // Fetch: Live Now streams (with auto-refresh every 60s)
+  const fetchLiveStreams = useCallback(async () => {
+    try {
+      setLiveError(null);
+      const data = await getLiveStreams();
+      setLiveStreams(data.map(mapLiveStream));
+    } catch (err) {
+      setLiveError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLiveLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveStreams();
+    const interval = setInterval(fetchLiveStreams, LIVE_REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [fetchLiveStreams]);
+
+  // Fetch: Upcoming schedule
+  const fetchSchedule = useCallback(async () => {
+    try {
+      setScheduleLoading(true);
+      setScheduleError(null);
+      const data = await getUpcomingStreams();
+      setScheduleItems(data.map(mapScheduleItem));
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSchedule();
+  }, [fetchSchedule]);
+
+  // Fetch: Channel list (for spotlight)
+  const fetchChannels = useCallback(async () => {
+    try {
+      setChannelsLoading(true);
+      setChannelsError(null);
+      const data = await getChannels();
+      const mapped = data.map(mapChannel);
+      setChannels(mapped);
+      setSelectedChannel((prev) => prev ?? mapped[0] ?? null);
+    } catch (err) {
+      setChannelsError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setChannelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchChannels();
+  }, [fetchChannels]);
+
+  // Fetch: Video/clip search results
+  const fetchVideoSearch = useCallback(async () => {
+    try {
+      setSearchLoading(true);
+      setSearchError(null);
+      const data = await searchVideos({ sort: "newest", target: ["video", "clip"] });
+      setVideoSearchList(data.map(mapVideoSearchResult));
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchVideoSearch();
+  }, [fetchVideoSearch]);
 
   // Sync state with localStorage
   useEffect(() => {
@@ -146,7 +252,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-brand-bg text-gray-100 font-sans antialiased selection:bg-brand-purple/30 selection:text-white">
       {/* Sidebar (Desktop) */}
-      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
+      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} liveCount={liveStreams.length} />
 
       {/* Main Container */}
       <div className="md:pl-64 flex flex-col min-h-screen">
@@ -187,7 +293,7 @@ export default function App() {
             <div className="hidden sm:flex items-center gap-2 bg-[#1a1a24] border border-[#232333] px-3 py-1.5 rounded-xl">
               <span className="w-2 h-2 rounded-full bg-brand-coral animate-pulse" />
               <span className="text-xs font-mono text-gray-300 font-semibold">
-                4 Streams Live
+                {liveStreams.length} Streams Live
               </span>
             </div>
 
@@ -287,51 +393,85 @@ export default function App() {
           </div>
 
           {/* Section 1: Live Now Grid */}
-          <LiveNowGrid
-            streams={liveStreams}
-            onSelectStream={setActiveTheaterStream}
-            favorites={favorites}
-            toggleFavorite={toggleFavorite}
-          />
+          <div id={liveLoading || liveError ? "live" : undefined} className="scroll-mt-6">
+            {liveLoading ? (
+              <LoadingCard label="Loading live streams..." />
+            ) : liveError ? (
+              <ErrorCard message={liveError} onRetry={fetchLiveStreams} />
+            ) : (
+              <LiveNowGrid
+                streams={liveStreams}
+                onSelectStream={setActiveTheaterStream}
+                favorites={favorites}
+                toggleFavorite={toggleFavorite}
+              />
+            )}
+          </div>
 
           {/* Section 2: Upcoming Schedule scroll timeline row */}
-          <UpcomingTimeline
-            schedule={scheduleItems}
-            reminders={reminders}
-            toggleReminder={toggleReminder}
-          />
+          <div id={scheduleLoading || scheduleError ? "schedule" : undefined} className="scroll-mt-6">
+            {scheduleLoading ? (
+              <LoadingCard label="Loading upcoming schedule..." />
+            ) : scheduleError ? (
+              <ErrorCard message={scheduleError} onRetry={fetchSchedule} />
+            ) : (
+              <UpcomingTimeline
+                schedule={scheduleItems}
+                reminders={reminders}
+                toggleReminder={toggleReminder}
+              />
+            )}
+          </div>
 
           {/* Section 3: Channel Spotlight banner component */}
-          <ChannelSpotlight
-            channels={channels}
-            selectedChannel={selectedChannel}
-            onSelectChannel={setSelectedChannel}
-            favorites={favorites}
-            toggleFavorite={toggleFavorite}
-            subscribedChannels={subscribedChannels}
-            toggleSubscribe={toggleSubscribe}
-          />
+          <div id={channelsLoading || channelsError || !selectedChannel ? "channels" : undefined} className="scroll-mt-6">
+            {channelsLoading ? (
+              <LoadingCard label="Loading channels..." />
+            ) : channelsError ? (
+              <ErrorCard message={channelsError} onRetry={fetchChannels} />
+            ) : selectedChannel ? (
+              <ChannelSpotlight
+                channels={channels}
+                selectedChannel={selectedChannel}
+                onSelectChannel={setSelectedChannel}
+                favorites={favorites}
+                toggleFavorite={toggleFavorite}
+                subscribedChannels={subscribedChannels}
+                toggleSubscribe={toggleSubscribe}
+              />
+            ) : (
+              <ErrorCard message="No channels available." onRetry={fetchChannels} />
+            )}
+          </div>
 
           {/* Section 4: Video Search list component */}
-          <VideoSearchSection
-            videos={videoSearchList}
-            onSelectVideo={(videoCast) => {
-              // Convert VideoSearchResult to LiveStream format for theater popup
-              const mockLiveCast: LiveStream = {
-                id: videoCast.id,
-                channelName: videoCast.channelName,
-                channelId: videoCast.channelId,
-                avatar: videoCast.avatar,
-                title: videoCast.title,
-                viewerCount: 0, // 0 signifies a stream replay or clip
-                topic: videoCast.topic,
-                thumbnail: videoCast.thumbnail,
-                startedAt: videoCast.date,
-                videoUrl: videoCast.id
-              };
-              setActiveTheaterStream(mockLiveCast);
-            }}
-          />
+          <div id={searchLoading || searchError ? "search" : undefined} className="scroll-mt-6">
+            {searchLoading ? (
+              <LoadingCard label="Loading videos & clips..." />
+            ) : searchError ? (
+              <ErrorCard message={searchError} onRetry={fetchVideoSearch} />
+            ) : (
+              <VideoSearchSection
+                videos={videoSearchList}
+                onSelectVideo={(videoCast) => {
+                  // Convert VideoSearchResult to LiveStream format for theater popup
+                  const mockLiveCast: LiveStream = {
+                    id: videoCast.id,
+                    channelName: videoCast.channelName,
+                    channelId: videoCast.channelId,
+                    avatar: videoCast.avatar,
+                    title: videoCast.title,
+                    viewerCount: 0, // 0 signifies a stream replay or clip
+                    topic: videoCast.topic,
+                    thumbnail: videoCast.thumbnail,
+                    startedAt: videoCast.date,
+                    videoUrl: videoCast.id
+                  };
+                  setActiveTheaterStream(mockLiveCast);
+                }}
+              />
+            )}
+          </div>
 
         </main>
 
