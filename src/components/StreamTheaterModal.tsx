@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Users, MessageSquare, History, Send, Heart, Check, Youtube } from "lucide-react";
+import { X, MessageSquare, History, Heart, Check, Youtube } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { LiveStream, VideoSearchResult } from "../types";
 import { getChannelVideos, HolodexVideo } from "../services/holodex";
 import { formatRelativeTime } from "../utils/holodexMappers";
+import { useLiveChat } from "../hooks/useLiveChat";
 
 interface StreamTheaterModalProps {
   stream: LiveStream | null;
@@ -13,75 +14,6 @@ interface StreamTheaterModalProps {
   subscribedChannels: string[];
   toggleSubscribe: (channelId: string) => void;
 }
-
-interface ChatMessage {
-  id: string;
-  username: string;
-  message: string;
-  color: string;
-  isSuperchat?: boolean;
-  superchatAmount?: string;
-  avatarSeed?: number;
-}
-
-// Sample usernames for our rolling chat
-const MOCK_USERNAMES = [
-  "PekoFan_99",
-  "Shrimp_3000",
-  "StarGazer_Suisei",
-  "Kroniichiwa",
-  "Marine_Husband_46",
-  "Calli_Deadbeat",
-  "Takodachi_Ina",
-  "Gura_Bait",
-  "Kobo_Watermelon",
-  "Baetastic",
-  "HololiveEnthusiast",
-  "Sora_Symphony",
-  "Miko_Elite_Elite"
-];
-
-// Sample messages based on VTubers
-const MOCK_MESSAGES = [
-  "IKZ!!!!!!!!!!! 🎉🎉",
-  "LET'S GOOOOOOOOOO!!!",
-  "Suisei is literally a singing goddess ☄️✨",
-  "GURA ACCENT IS SO CUTE HELP 😍",
-  "HA-HA-HA-HA PEKO PEKO PEKO",
-  "Ahoy!!!!! 🏴‍☠️🏴‍☠️",
-  "This stream is exactly what I needed today, thank you!",
-  "poggers in the chat boys!",
-  "WAH! WAH! WAH!",
-  "Wait, what is happening?? lol",
-  "This BG music is absolute fire 🔥🔥🔥",
-  "R.I.P ears, she screamed so loud haha",
-  "Unbelievable gaming skills right here!",
-  "My Oshi is the best!",
-  "Is the stream lagging or is it just my internet?",
-  "sasuga leader!!",
-  "T-Spin double setup was incredible!",
-  "Guuuuraaaaa can we get an album please? 💙"
-];
-
-// Chat colors
-const HANDLE_COLORS = [
-  "text-cyan-400",
-  "text-pink-400",
-  "text-emerald-400",
-  "text-purple-400",
-  "text-yellow-400",
-  "text-sky-400",
-  "text-rose-400",
-  "text-orange-400",
-  "text-blue-400"
-];
-
-const SUPERCHAT_TIERS = [
-  { amount: "$5.00", color: "bg-sky-600/30 border-sky-500 text-sky-200" },
-  { amount: "$10.00", color: "bg-emerald-600/30 border-emerald-500 text-emerald-200" },
-  { amount: "$50.00", color: "bg-amber-600/30 border-amber-500 text-amber-200" },
-  { amount: "$100.00", color: "bg-rose-600/30 border-rose-500 text-rose-200" }
-];
 
 export default function StreamTheaterModal({
   stream,
@@ -93,8 +25,7 @@ export default function StreamTheaterModal({
 }: StreamTheaterModalProps) {
   if (!stream) return null;
 
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [userChatInput, setUserChatInput] = useState("");
+  const { messages: chatMessages, isConnected: isChatConnected, error: chatError } = useLiveChat(stream.id);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Active video being shown in the player (defaults to the selected stream, can switch to a past VOD)
@@ -148,69 +79,10 @@ export default function StreamTheaterModal({
     setActiveVideoTitle(video.title);
   };
 
-  // Initialize with some comments
-  useEffect(() => {
-    const initialChats: ChatMessage[] = [];
-    for (let i = 0; i < 15; i++) {
-      initialChats.push(generateRandomMessage());
-    }
-    setChatMessages(initialChats);
-  }, [stream]);
-
   // Handle auto-scroll of chat
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
-
-  // Simulate incoming live chat messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setChatMessages((prev) => {
-        // Limit total chat list size to 80 messages for performance
-        const list = prev.length > 80 ? prev.slice(prev.length - 60) : prev;
-        return [...list, generateRandomMessage()];
-      });
-    }, 1500 + Math.random() * 2000); // random interval
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const generateRandomMessage = (): ChatMessage => {
-    const username = MOCK_USERNAMES[Math.floor(Math.random() * MOCK_USERNAMES.length)];
-    const message = MOCK_MESSAGES[Math.floor(Math.random() * MOCK_MESSAGES.length)];
-    const color = HANDLE_COLORS[Math.floor(Math.random() * HANDLE_COLORS.length)];
-    const isSuperchat = Math.random() > 0.88; // 12% chance for superchat
-
-    let superchatAmount = "";
-    if (isSuperchat) {
-      superchatAmount = SUPERCHAT_TIERS[Math.floor(Math.random() * SUPERCHAT_TIERS.length)].amount;
-    }
-
-    return {
-      id: Math.random().toString(36).substr(2, 9),
-      username,
-      message,
-      color,
-      isSuperchat,
-      superchatAmount,
-      avatarSeed: Math.floor(Math.random() * 100)
-    };
-  };
-
-  const handleSendUserChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userChatInput.trim()) return;
-
-    const newChat: ChatMessage = {
-      id: "user_msg_" + Date.now(),
-      username: "You (HoloFan)",
-      message: userChatInput.trim(),
-      color: "text-brand-coral font-bold",
-    };
-
-    setChatMessages((prev) => [...prev, newChat]);
-    setUserChatInput("");
-  };
 
   return (
     <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 md:p-6 overflow-y-auto">
@@ -374,76 +246,60 @@ export default function StreamTheaterModal({
                 {/* Chat header panel */}
                 <div className="px-4 py-2.5 bg-[#0f0f14] border-b border-[#232333] flex items-center justify-between shrink-0">
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-sans">
-                    Holo Chat Room
+                    Live Chat
                   </span>
                   <div className="flex items-center gap-1.5 text-gray-500 font-mono text-[10px]">
-                    <Users className="w-3.5 h-3.5 text-brand-coral" />
-                    <span>{stream.viewerCount > 0 ? "LIVE" : "ARCHIVE"}</span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isChatConnected ? "bg-emerald-400" : "bg-gray-600"
+                      }`}
+                    />
+                    <span>{isChatConnected ? "CONNECTED" : "OFFLINE"}</span>
                   </div>
                 </div>
 
                 {/* Chat list scrolling messages */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                  {chatMessages.map((msg) => (
-                    <div key={msg.id} className="text-xs font-sans">
-                      {msg.isSuperchat ? (
-                        /* Super Chat Block */
-                        <div className={`p-2 rounded-lg border my-1.5 text-left ${msg.color} ${
-                          msg.superchatAmount === "$100.00"
-                            ? "bg-rose-500/10 border-rose-500/30 text-rose-200"
-                            : msg.superchatAmount === "$50.00"
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
-                            : "bg-sky-500/10 border-sky-500/30 text-sky-200"
-                        }`}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-bold font-mono text-[10px] uppercase tracking-wider">
-                              ★ Super Chat {msg.superchatAmount}
-                            </span>
-                            <span className="font-bold font-mono">{msg.superchatAmount}</span>
-                          </div>
-                          <p className="font-medium text-gray-200">{msg.username}</p>
-                          <p className="text-white font-medium mt-0.5">{msg.message}</p>
-                        </div>
-                      ) : (
-                        /* Normal Chat message line */
-                        <div className="flex items-start gap-2 leading-relaxed">
-                          {/* Circle fallback seed avatar color */}
-                          <div className="w-5 h-5 rounded-full bg-brand-purple/20 text-brand-purple text-[8px] flex items-center justify-center shrink-0 uppercase font-mono font-bold">
-                            {msg.username.substring(0, 2)}
-                          </div>
-                          <div>
-                            <span className={`font-semibold mr-1.5 ${msg.color}`}>
-                              {msg.username}:
-                            </span>
-                            <span className="text-gray-200">{msg.message}</span>
-                          </div>
-                        </div>
-                      )}
+                  {chatError ? (
+                    <div className="flex items-center justify-center h-full text-center px-4">
+                      <span className="text-xs font-sans text-brand-coral font-medium">{chatError}</span>
                     </div>
-                  ))}
+                  ) : chatMessages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-center px-4">
+                      <span className="text-xs font-sans text-gray-500">
+                        {isChatConnected ? "Waiting for chat..." : "Connecting to chat..."}
+                      </span>
+                    </div>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div key={msg.id} className="flex items-start gap-2 leading-relaxed text-xs font-sans">
+                        {msg.authorPhoto ? (
+                          <img
+                            src={msg.authorPhoto}
+                            alt={msg.authorName}
+                            referrerPolicy="no-referrer"
+                            className="w-5 h-5 rounded-full object-cover shrink-0"
+                          />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full bg-brand-purple/20 text-brand-purple text-[8px] flex items-center justify-center shrink-0 uppercase font-mono font-bold">
+                            {msg.authorName.charAt(0)}
+                          </div>
+                        )}
+                        <div>
+                          <span
+                            className={`font-semibold mr-1.5 ${
+                              msg.isMember ? "text-brand-purple" : "text-gray-400"
+                            }`}
+                          >
+                            {msg.authorName}:
+                          </span>
+                          <span className="text-white">{msg.message}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                   <div ref={chatBottomRef} />
                 </div>
-
-                {/* Send user input box */}
-                <form
-                  onSubmit={handleSendUserChat}
-                  className="p-3 bg-[#13131a] border-t border-[#232333] flex items-center gap-2"
-                >
-                  <input
-                    type="text"
-                    value={userChatInput}
-                    onChange={(e) => setUserChatInput(e.target.value)}
-                    placeholder="Send a message peko..."
-                    maxLength={150}
-                    className="flex-1 bg-[#0f0f14] border border-[#232333] focus:border-brand-purple rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none font-sans"
-                  />
-                  <button
-                    type="submit"
-                    className="p-2 bg-brand-purple hover:bg-brand-purple-hover text-white rounded-lg transition-colors cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
               </>
             ) : (
               <>
