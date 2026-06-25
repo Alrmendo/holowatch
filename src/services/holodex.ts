@@ -35,10 +35,13 @@ export interface HolodexChannel {
   video_count: string | null;
   view_count?: string | null;
   org: string | null;
+  suborg?: string | null;
   lang?: string | null;
   inactive?: boolean;
   twitter?: string | null;
+  twitch?: string | null;
   description?: string | null;
+  type?: string;
 }
 
 export interface HolodexSearchParams {
@@ -116,6 +119,18 @@ export async function getChannelVideos(
   return holodexFetch<HolodexVideo[]>(
     `/channels/${channelId}/videos?${query.toString()}`
   );
+}
+
+export async function getChannelCollabs(
+  channelId: string,
+  limit = 24
+): Promise<HolodexVideo[]> {
+  const query = new URLSearchParams({
+    mentioned_channel_id: channelId,
+    type: "stream",
+    limit: String(limit),
+  });
+  return holodexFetch<HolodexVideo[]>(`/videos?${query.toString()}`);
 }
 
 export async function searchVideos(

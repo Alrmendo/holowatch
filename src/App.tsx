@@ -8,6 +8,7 @@ import UpcomingTimeline from "./components/UpcomingTimeline";
 import ChannelSpotlight from "./components/ChannelSpotlight";
 import VideoSearchSection from "./components/VideoSearchSection";
 import StreamTheaterModal from "./components/StreamTheaterModal";
+import ChannelModal from "./components/ChannelModal";
 import { LoadingCard, ErrorCard } from "./components/SectionStatus";
 
 import { Channel, LiveStream, ScheduleItem, VideoSearchResult } from "./types";
@@ -56,6 +57,9 @@ export default function App() {
   // Spotlight and Theater States
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [activeTheaterStream, setActiveTheaterStream] = useState<LiveStream | null>(null);
+  const [channelModalId, setChannelModalId] = useState<string | null>(null);
+
+  const apiKey = (import.meta.env.VITE_HOLODEX_API_KEY as string | undefined) ?? "";
 
   // Mobile Drawer State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -252,7 +256,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-brand-bg text-gray-100 font-sans antialiased selection:bg-brand-purple/30 selection:text-white">
       {/* Sidebar (Desktop) */}
-      <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} liveCount={liveStreams.length} />
+      <Sidebar
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        liveCount={liveStreams.length}
+        apiKey={apiKey}
+        onChannelSelect={(id) => setChannelModalId(id)}
+      />
 
       {/* Main Container */}
       <div className="md:pl-64 flex flex-col min-h-screen">
@@ -480,6 +490,28 @@ export default function App() {
           <p>© 2026 HoloWatch - Fanmade VTuber Live Dashboard. All VTuber assets and identities belong to Cover Corp.</p>
         </footer>
       </div>
+
+      {/* Channel Detail Modal */}
+      <ChannelModal
+        channelId={channelModalId}
+        apiKey={apiKey}
+        onClose={() => setChannelModalId(null)}
+        onStreamClick={(video) => {
+          setChannelModalId(null);
+          setActiveTheaterStream({
+            id: video.id,
+            channelName: video.channel.english_name || video.channel.name,
+            channelId: video.channel.id,
+            avatar: video.channel.photo || "",
+            title: video.title,
+            viewerCount: video.live_viewers ?? 0,
+            topic: video.topic_id || "Chatting",
+            thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`,
+            startedAt: video.available_at,
+            videoUrl: video.id,
+          });
+        }}
+      />
 
       {/* Stream Viewer Theater Modal Overlay */}
       <AnimatePresence>
