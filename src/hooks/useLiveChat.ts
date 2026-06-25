@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ChatMessage } from "../types/chat";
 
 const MAX_MESSAGES = 200;
@@ -22,48 +22,43 @@ export function useLiveChat(videoId: string | null): UseLiveChatResult {
     if (!videoId) return;
 
     let cancelled = false;
-    let ws: WebSocket | undefined;
 
-    fetch("/chat-port.json")
-      .then((res) => res.json())
-      .then((data: { port: number }) => {
-        if (cancelled) return;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
-        ws = new WebSocket(`ws://localhost:${data.port}`);
+    ws.onopen = () => {
+      if (cancelled) return;
+      setIsConnected(true);
+      ws.send(JSON.stringify({ type: "join", videoId }));
+    };
 
-        ws.onopen = () => {
-          setIsConnected(true);
-          ws?.send(JSON.stringify({ type: "join", videoId }));
-        };
+    ws.onmessage = (event) => {
+      if (cancelled) return;
+      const parsed = JSON.parse(event.data);
 
-        ws.onmessage = (event) => {
-          const parsed = JSON.parse(event.data);
+      if (parsed.type === "chat") {
+        setMessages((prev) => {
+          const next = [...prev, parsed.data as ChatMessage];
+          return next.length > MAX_MESSAGES ? next.slice(next.length - MAX_MESSAGES) : next;
+        });
+      } else if (parsed.type === "error") {
+        setError(parsed.message);
+      }
+    };
 
-          if (parsed.type === "chat") {
-            setMessages((prev) => {
-              const next = [...prev, parsed.data as ChatMessage];
-              return next.length > MAX_MESSAGES ? next.slice(next.length - MAX_MESSAGES) : next;
-            });
-          } else if (parsed.type === "error") {
-            setError(parsed.message);
-          }
-        };
+    ws.onclose = () => {
+      if (cancelled) return;
+      setIsConnected(false);
+    };
 
-        ws.onclose = () => {
-          setIsConnected(false);
-        };
-
-        ws.onerror = () => {
-          setError("Connection to chat server failed");
-        };
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not reach chat server");
-      });
+    ws.onerror = () => {
+      if (cancelled) return;
+      setError("Connection to chat server failed");
+    };
 
     return () => {
       cancelled = true;
-      ws?.close();
+      ws.close();
     };
   }, [videoId]);
 

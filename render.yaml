@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: holowatch
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: VITE_HOLODEX_API_KEY
+        sync: false

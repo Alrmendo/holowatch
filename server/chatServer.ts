@@ -3,12 +3,10 @@ import cors from "cors";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { Masterchat, stringify } from "masterchat";
-import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
 
-const MIN_PORT = 3001;
-const MAX_PORT = 3010;
-const CHAT_PORT_FILE = path.resolve(import.meta.dirname, "..", "public", "chat-port.json");
+const PORT = Number(process.env.PORT) || 3001;
+const DIST_DIR = path.resolve(import.meta.dirname, "dist");
 
 interface JoinMessage {
   type: "join";
@@ -92,50 +90,23 @@ function handleConnection(ws: WebSocket) {
   });
 }
 
-function writeChatPortFile(port: number) {
-  mkdirSync(path.dirname(CHAT_PORT_FILE), { recursive: true });
-  writeFileSync(CHAT_PORT_FILE, JSON.stringify({ port }));
-}
-
-function tryListen(port: number) {
+function listen(port: number) {
   const app = express();
   app.use(cors());
+  app.use(express.static(DIST_DIR));
+  app.get("*", (_req, res) => res.sendFile(path.join(DIST_DIR, "index.html")));
 
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
   wss.on("connection", handleConnection);
 
-  // ws forwards the underlying http server's "error" event onto wss, so a
-  // single EADDRINUSE fires this handler twice (once per emitter) — guard
-  // against acting on it more than once per attempt.
-  let handled = false;
-
-  function handleServerError(err: NodeJS.ErrnoException) {
-    if (handled) return;
-    handled = true;
-
-    if (err.code === "EADDRINUSE" && port < MAX_PORT) {
-      httpServer.close(() => tryListen(port + 1));
-      return;
-    }
-
-    if (err.code === "EADDRINUSE") {
-      console.error(
-        `❌ Ports ${MIN_PORT}-${MAX_PORT} are all in use. Run: netstat -ano | findstr :${port} then taskkill /PID <pid> /F`
-      );
-      process.exit(1);
-    }
-
+  httpServer.on("error", (err) => {
     throw err;
-  }
-
-  httpServer.on("error", handleServerError);
-  wss.on("error", handleServerError);
+  });
 
   httpServer.listen(port, () => {
-    writeChatPortFile(port);
-    console.log(`✅ Chat server listening on port ${port}`);
+    console.log(`✅ Server listening on port ${port}`);
   });
 }
 
-tryListen(MIN_PORT);
+listen(PORT);
